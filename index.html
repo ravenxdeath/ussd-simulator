@@ -1,0 +1,928 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Feature Phone USSD Simulator</title>
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    /* small extra tweaks */
+    .phone {
+      width: 360px;
+      max-width: 92vw;
+      height: 780px; /* increased height */
+      max-height: 92vh;
+      border-radius: 18px;
+      box-shadow: 0 20px 50px rgba(15, 23, 42, 0.45);
+      background: linear-gradient(180deg,#0f172a 0%, #0b1220 100%);
+      position: relative;
+      overflow: hidden;
+      user-select: none;
+    }
+    .screen {
+      width: calc(100% - 28px);
+      height: calc(36% - 18px); /* make the feature-phone screen larger for better readability */
+      border-radius: 10px;
+      margin: 14px;
+      background: linear-gradient(180deg,#0b1220,#061024);
+      border: 2px solid rgba(255,255,255,0.05);
+      box-shadow: inset 0 4px 18px rgba(255,255,255,0.02);
+      color: #cbd5e1;
+      padding: 10px;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto;
+      display:flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      gap:8px;
+    }
+    .screen .content {
+      overflow:auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .numpad button:active { transform: translateY(1px) scale(0.995); }
+    .btn-circle {
+      width: 46px; height: 46px; border-radius:999px;
+    }
+    /* Make numpad fit the phone box using grid rows so buttons always fill available area */
+    .numpad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(4, 1fr);
+      gap: 10px;
+      height: 260px; /* reduced to allow larger screen above */
+    }
+    .numpad button {
+      height: 100%;
+      min-height: 56px;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+    }
+    .phone-bottom {
+      background: linear-gradient(180deg,#071026,#07161b);
+      height: calc(78% + 18px);
+      display:flex;
+      justify-content:center;
+      align-items:flex-start;
+      padding-top: 8px;
+    }
+    /* small responsive */
+    @media (max-width:380px){
+      .phone { transform: scale(0.95); }
+    }
+    /* responsive adjustments */
+    @media (max-width:420px) {
+      .phone { width: 92vw; height: 88vh; }
+      .numpad { height: calc(60vh - 180px); gap: 8px; }
+      .screen { height: calc(20% - 18px); }
+    }
+    /* scrolling faux USSD text style */
+  .ussd-line { font-size: 16px; color: #e6eef8; line-height:1.3 }
+  .hint { font-size: 13px; color: #9fb2d4;}
+  .small { font-size: 13px; color: #bcd0ea;}
+  #screenContent { font-size: 15px; }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 to-sky-800 min-h-screen flex items-center justify-center p-6">
+
+  <div class="phone" id="phone">
+    <!-- top speaker -->
+    <div class="w-full flex justify-center pt-2">
+      <div class="w-24 h-2 rounded bg-slate-800"></div>
+    </div>
+
+    <!-- screen (top 1/4) -->
+    <div class="screen" id="screen">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+          <div class="small">Operator</div>
+        </div>
+        <div class="small" id="clock">--:--</div>
+      </div>
+      <div class="content mt-2" id="screenContent" aria-live="polite">
+        <!-- content gets injected by JS -->
+      </div>
+      <div class="mt-2 flex items-center justify-between">
+        <div class="hint">Left: Send</div>
+        <div class="hint">OK: Select</div>
+        <div class="hint">Right: Back</div>
+      </div>
+    </div>
+
+    <!-- phone body / bottom -->
+    <div class="phone-bottom">
+      <div class="w-full max-w-md px-4">
+        <!-- Visual phone face (optional image) -->
+        <div class="flex justify-center mb-3">
+          <!-- optional decorative image: you can replace src if using your own -->
+          <img src="/mnt/data/hmd-105-Blue-ps6.jpg" alt="" class="w-24 rounded-md opacity-20" />
+        </div>
+
+        <!-- Control row: send & small back icons (left), D-pad (center), back icon (right) -->
+        <div class="flex items-center justify-between mb-3">
+          <!-- left stacked small buttons (send and back) placed beside D-pad -->
+          <div class="flex items-center">
+            <div class="flex flex-col items-center gap-2 mr-3">
+              <button id="leftBtn" class="btn-circle bg-green-500 text-white flex items-center justify-center shadow" aria-label="Send">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h4l2 5v6l6 2h4" /></svg>
+              </button>
+              <!-- left small back button removed per request -->
+            </div>
+          </div>
+
+          <!-- D-pad + OK -->
+          <div class="flex flex-col items-center gap-2">
+            <div class="flex items-center gap-2">
+              <button id="upBtn" class="btn-circle bg-slate-700 text-white flex items-center justify-center">▲</button>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="leftNav" class="btn-circle bg-slate-700 text-white flex items-center justify-center">◀</button>
+
+              <button id="okBtn" class="btn-circle bg-sky-600 text-white flex items-center justify-center shadow-lg">OK</button>
+
+              <button id="rightNav" class="btn-circle bg-slate-700 text-white flex items-center justify-center">▶</button>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="downBtn" class="btn-circle bg-slate-700 text-white flex items-center justify-center">▼</button>
+            </div>
+          </div>
+
+          <!-- right single back icon -->
+          <div>
+            <button id="rightBtn" class="btn-circle bg-red-600 hover:brightness-90 text-white shadow" aria-label="Back">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l-7-7 7-7" /></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Numpad -->
+        <div class="grid grid-cols-3 gap-3 numpad">
+          <!-- row 1 -->
+          <button class="flex flex-col items-center justify-center py-3 rounded-lg bg-slate-800 text-white" data-key="1">
+            <div class="text-lg font-semibold">1</div>
+            <div class="text-xs small"> . , ? </div>
+          </button>
+          <button class="flex flex-col items-center justify-center py-3 rounded-lg bg-slate-800 text-white" data-key="2">
+            <div class="text-lg font-semibold">2</div>
+            <div class="text-xs small">abc</div>
+          </button>
+          <button class="flex flex-col items-center justify-center py-3 rounded-lg bg-slate-800 text-white" data-key="3">
+            <div class="text-lg font-semibold">3</div>
+            <div class="text-xs small">def</div>
+          </button>
+          <!-- row 2 -->
+          <button class="flex flex-col items-center justify-center py-3 rounded-lg bg-slate-800 text-white" data-key="4">
+            <div class="text-lg font-semibold">4</div>
+            <div class="text-xs small">ghi</div>
+          </button>
+          <button class="flex flex-col items-center justify-center py-3 rounded-lg bg-slate-800 text-white" data-key="5">
+            <div class="text-lg font-semibold">5</div>
+            <div class="text-xs small">jkl</div>
+          </button>
+          <button class="flex flex-col items-center justify-center py-3 rounded-lg bg-slate-800 text-white" data-key="6">
+            <div class="text-lg font-semibold">6</div>
+            <div class="text-xs small">mno</div>
+          </button>
+          <!-- row 3 -->
+          <button class="flex flex-col items-center justify-center py-3 rounded-lg bg-slate-800 text-white" data-key="7">
+            <div class="text-lg font-semibold">7</div>
+            <div class="text-xs small">pqrs</div>
+          </button>
+          <button class="flex flex-col items-center justify-center py-3 rounded-lg bg-slate-800 text-white" data-key="8">
+            <div class="text-lg font-semibold">8</div>
+            <div class="text-xs small">tuv</div>
+          </button>
+          <button class="flex flex-col items-center justify-center py-3 rounded-lg bg-slate-800 text-white" data-key="9">
+            <div class="text-lg font-semibold">9</div>
+            <div class="text-xs small">wxyz</div>
+          </button>
+          <!-- row 4 -->
+          <button class="flex flex-col items-center justify-center py-3 rounded-lg bg-slate-800 text-white" data-key="*">
+            <div class="text-lg font-semibold">*</div>
+            <div class="text-xs small">...</div>
+          </button>
+          <button class="flex flex-col items-center justify-center py-3 rounded-lg bg-slate-800 text-white" data-key="0">
+            <div class="text-lg font-semibold">0</div>
+            <div class="text-xs small">+ 0</div>
+          </button>
+          <button class="flex flex-col items-center justify-center py-3 rounded-lg bg-slate-800 text-white" data-key="#">
+            <div class="text-lg font-semibold">#</div>
+            <div class="text-xs small">..</div>
+          </button>
+        </div>
+
+        <!-- small footer -->
+        <!-- <div class="mt-4 text-center small text-slate-300">
+          Feature Phone USSD Simulator — Click keys to type USSD like <code>*123#</code>, <code>*247#</code> or <code>*999#</code>.
+        </div> -->
+      </div>
+    </div>
+  </div>
+
+<script>
+/*
+  Feature Phone USSD Simulator
+  - Keeps a screen stack for navigation
+  - Handles *123#, *247# and new *999# credential management flow
+  - Simple data model for 3 accounts with dummy credentials and phone numbers
+*/
+
+const screenContent = document.getElementById('screenContent');
+const clockEl = document.getElementById('clock');
+
+function updateClock() {
+  const d = new Date();
+  const mm = String(d.getMinutes()).padStart(2,'0');
+  const hh = String(d.getHours()).padStart(2,'0');
+  clockEl.textContent = `${hh}:${mm}`;
+}
+updateClock();
+setInterval(updateClock, 1000*30);
+
+// Dummy accounts with phone numbers and credentials (pre-populated)
+const accounts = {
+  1: {
+    id:1,
+    name: 'Raven',
+    balance: 1250.50,
+    wallet: 50.00,
+    number: '01810000001',
+    phone: '01773714424',
+    credentials: [
+      { type: 'NID', id: 'NID-100100' },
+      { type: 'Passport', id: 'P-RA-1001' },
+      { type: 'Driving License', id: 'DL-1001' },
+    ]
+  },
+  2: {
+    id:2,
+    name: 'Aungshuk',
+    balance: 300.00,
+    wallet: 15.00,
+    number: '01810000002',
+    phone: '01580504640',
+    credentials: [
+      { type: 'NID', id: 'NID-200200' },
+      { type: 'Passport', id: 'P-RA-2002' },
+      { type: 'Driving License', id: 'DL-2002' },
+    ]
+  },
+  3: {
+    id:3,
+    name: 'Kingshuk',
+    balance: 987.75,
+    wallet: 120.00,
+    number: '01810000003',
+    phone: '01580590008',
+    credentials: [
+      { type: 'NID', id: 'NID-300300' },
+      { type: 'Passport', id: 'P-RA-3003' },
+      { type: 'Driving License', id: 'DL-3003' },
+    ]
+  },
+};
+
+// history stack for back navigation
+const viewStack = [];
+
+// current typed buffer (what appears in small top of screen when dialing)
+let inputBuffer = "";
+
+// utility: render basic screen with lines (text)
+function renderScreen(lines, opts = {}) {
+  // lines: array of {type: 'text'|'menu'|'input'|'receipt', text, id?}
+  // an input line may show the typed buffer
+  screenContent.innerHTML = ''; 
+  lines.forEach((ln) => {
+    const div = document.createElement('div');
+    if (ln.type === 'menu') {
+      // render menu item clickable
+      const btn = document.createElement('div');
+      btn.className = 'ussd-line p-2 rounded hover:bg-white/5 cursor-pointer';
+      btn.innerHTML = `<span class="font-semibold mr-2">${ln.key}.</span> ${ln.text}`;
+      btn.dataset.key = ln.key;
+      btn.onclick = () => handleMenuSelect(ln.key);
+      div.appendChild(btn);
+    } else if (ln.type === 'input') {
+      div.className = 'p-2 ussd-line';
+      div.innerHTML = `<div class="small text-slate-300 mb-1">${ln.prompt}</div><div id="inputLine" class="text-lg font-medium">${inputBuffer || '<span class="text-slate-400">Type here</span>'}</div>`;
+    } else if (ln.type === 'text') {
+      div.className = 'ussd-line p-1';
+      div.innerHTML = ln.text;
+    } else if (ln.type === 'receipt') {
+      div.className = 'rounded p-2 bg-white/5';
+      div.innerHTML = `<div class="font-semibold">${ln.title}</div><div class="small mt-1">${ln.body}</div>`;
+    }
+    screenContent.appendChild(div);
+  });
+
+  // store last view in stack
+  if (!opts.replaceStack) {
+    viewStack.push({ lines, opts });
+  } else {
+    // replace top
+    viewStack[viewStack.length - 1] = { lines, opts };
+  }
+}
+
+// helper: update input display
+function refreshInputLine() {
+  const el = document.getElementById('inputLine');
+  if (el) el.innerHTML = inputBuffer || '<span class="text-slate-400">Type here</span>';
+}
+
+// reset to home
+function showIdle() {
+  inputBuffer = "";
+  viewStack.length = 0;
+  renderScreen([
+    { type:'text', text: '<div class="text-xl font-semibold">Welcome</div>' },
+    { type:'text', text: '<div class="small text-slate-300">Enter USSD or press Send</div>' },
+    { type:'input', prompt: 'Enter USSD code (example: *123#)' },
+  ]);
+}
+showIdle();
+
+// handle menu select (either numeric choices or named commands)
+function handleMenuSelect(key) {
+  const current = viewStack[viewStack.length - 1];
+  // if top view is prompt for account selection after *123#
+  if (current && current.opts && current.opts.context === 'choose-account-for-123') {
+    // key should be account id
+    if (accounts[key]) openAccountMenu(accounts[key]);
+    else {
+      renderScreen([{type:'text', text:'Invalid account id.'}, {type:'input', prompt:'Enter account id (1-3)'}], { context:'choose-account-for-123', replaceStack:true });
+      inputBuffer = "";
+      refreshInputLine();
+    }
+    return;
+  }
+
+  // new: *999# main menu handling
+  if (current && current.opts && current.opts.context === 'ussd-999-main') {
+    switch(String(key)) {
+      case '1': // Open account (show summary / open menu)
+        renderScreen([
+          {type:'text', text:'Choose account to open'},
+          {type:'menu', key:'1', text:`1. ${accounts[1].name}`},
+          {type:'menu', key:'2', text:`2. ${accounts[2].name}`},
+          {type:'menu', key:'3', text:`3. ${accounts[3].name}`},
+        ], { context:'ussd-999-open-account' });
+        return;
+      case '2': // Show credentials - choose account
+        renderScreen([
+          {type:'text', text:'Show credentials — choose account'},
+          {type:'menu', key:'1', text:`1. ${accounts[1].name}`},
+          {type:'menu', key:'2', text:`2. ${accounts[2].name}`},
+          {type:'menu', key:'3', text:`3. ${accounts[3].name}`},
+        ], { context:'ussd-999-show-creds-choose' });
+        return;
+      case '3': // Add credential - choose account
+        renderScreen([
+          {type:'text', text:'Add credential — choose account'},
+          {type:'menu', key:'1', text:`1. ${accounts[1].name}`},
+          {type:'menu', key:'2', text:`2. ${accounts[2].name}`},
+          {type:'menu', key:'3', text:`3. ${accounts[3].name}`},
+        ], { context:'ussd-999-add-creds-choose' });
+        return;
+      case '4': // Remove credential - choose account
+        renderScreen([
+          {type:'text', text:'Remove credential — choose account'},
+          {type:'menu', key:'1', text:`1. ${accounts[1].name}`},
+          {type:'menu', key:'2', text:`2. ${accounts[2].name}`},
+          {type:'menu', key:'3', text:`3. ${accounts[3].name}`},
+        ], { context:'ussd-999-remove-choose-account' });
+        return;
+    }
+  }
+
+  // handle selecting account to open from *999# open-account
+  if (current && current.opts && current.opts.context === 'ussd-999-open-account') {
+    const acc = accounts[key];
+    if (!acc) return;
+    // show details including phone and credentials summary
+    renderScreen([
+      {type:'text', text:`Account: <span class="font-semibold">${acc.name}</span>`},
+      {type:'text', text:`ID: ${acc.id} • Number: ${acc.number}`},
+      {type:'text', text:`Phone (Grameen BDT): ${acc.phone}`},
+      {type:'receipt', title:'Credentials', body: acc.credentials.map((c,i)=>`${i+1}. ${c.type}: ${c.id}`).join(' • ') }
+    ], { context:'account-menu', account: acc });
+    return;
+  }
+
+  // show credentials: user picked an account
+  if (current && current.opts && current.opts.context === 'ussd-999-show-creds-choose') {
+    const acc = accounts[key];
+    if (!acc) return;
+    const lines = [
+      {type:'text', text:`Credentials for ${acc.name}`},
+      {type:'text', text:`Phone (Grameen BDT): ${acc.phone}`},
+    ];
+    if (acc.credentials && acc.credentials.length) {
+      acc.credentials.forEach((c, idx) => {
+        lines.push({ type:'text', text: `${idx+1}. ${c.type}: ${c.id}` });
+      });
+    } else {
+      lines.push({ type:'text', text: 'No credentials stored.' });
+    }
+    renderScreen(lines);
+    return;
+  }
+
+  // add credential: after choosing account, ask for type
+  if (current && current.opts && current.opts.context === 'ussd-999-add-creds-choose') {
+    const acc = accounts[key];
+    if (!acc) return;
+    renderScreen([
+      {type:'text', text:`Add credential to ${acc.name}`},
+      {type:'menu', key:'1', text:'1. NID'},
+      {type:'menu', key:'2', text:'2. Passport'},
+      {type:'menu', key:'3', text:'3. Driving license'},
+    ], { context:'ussd-999-add-creds-type', account: acc });
+    return;
+  }
+
+  // handle selecting type (click)
+  if (current && current.opts && current.opts.context === 'ussd-999-add-creds-type') {
+    const acc = current.opts.account;
+    const mapping = { '1': 'NID', '2': 'Passport', '3': 'Driving License' };
+    const selected = mapping[key];
+    if (!selected) return;
+    // prompt for credential id/value
+    inputBuffer = "";
+    renderScreen([
+      {type:'text', text:`Add ${selected} for ${acc.name}`},
+      {type:'input', prompt:`Enter ${selected} number/ID`}
+    ], { context:'ussd-999-add-creds-enter', account: acc, credType: selected });
+    refreshInputLine();
+    return;
+  }
+
+  // remove credential: after choosing account, show list of credentials as menu
+  if (current && current.opts && current.opts.context === 'ussd-999-remove-choose-account') {
+    const acc = accounts[key];
+    if (!acc) return;
+    const lines = [{ type:'text', text: `Remove credential from ${acc.name}` }];
+    if (!acc.credentials || acc.credentials.length === 0) {
+      lines.push({ type:'text', text: 'No credentials to remove.' });
+      renderScreen(lines);
+      return;
+    }
+    acc.credentials.forEach((c, idx) => {
+      lines.push({ type:'menu', key: String(idx+1), text: `${idx+1}. ${c.type}: ${c.id}` });
+    });
+    renderScreen(lines, { context:'ussd-999-remove-select-cred', account: acc });
+    return;
+  }
+
+  // remove selected credential (index)
+  if (current && current.opts && current.opts.context === 'ussd-999-remove-select-cred') {
+    const acc = current.opts.account;
+    const idx = parseInt(key, 10) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= acc.credentials.length) {
+      renderScreen([{type:'text', text:'Invalid selection.'}]);
+      return;
+    }
+    const removed = acc.credentials.splice(idx, 1)[0];
+    renderScreen([{ type:'receipt', title:'Credential Removed', body: `${removed.type} ${removed.id} removed from ${acc.name}` }]);
+    return;
+  }
+
+  // handle menu select (either numeric choices or named commands) for account-menu (reuse)
+  if (current && current.opts && current.opts.context === 'account-menu') {
+    const account = current.opts.account;
+    switch(String(key)) {
+      case '1': // Account balance
+        renderScreen([
+          {type:'text', text:`Account: <span class="font-semibold">${account.name}</span>`},
+          {type:'text', text:`Acc ID: ${account.id} • Number: ${account.number}`},
+          {type:'receipt', title:'Balance', body:`Main balance: ৳${account.balance.toFixed(2)} • Wallet: ৳${account.wallet.toFixed(2)}`},
+        ]);
+        return;
+      case '2': // Recharge
+        inputBuffer = "";
+        renderScreen([
+          {type:'text', text:`Recharge for ${account.name}`},
+          {type:'input', prompt:'Enter amount to recharge (৳)'}
+        ], { context:'recharge', account});
+        refreshInputLine();
+        return;
+      case '3': // Internet & Combo
+        renderScreen([
+          {type:'text', text:`Internet & Combo Bundles`},
+          {type:'menu', key: '1', text: '1GB - ৳50 (7 days)'},
+          {type:'menu', key: '2', text: '3GB - ৳120 (14 days)'},
+          {type:'menu', key: '3', text: '10GB - ৳300 (30 days)'},
+        ], { context:'bundle-menu', account});
+        return;
+      case '4':
+        renderScreen([
+          {type:'text', text:`Minutes & SMS Packages`},
+          {type:'menu', key:'1', text: '50min + 100SMS - ৳40'},
+          {type:'menu', key:'2', text: '120min + 500SMS - ৳100'},
+        ], { context:'minutes-menu', account});
+        return;
+      case '5':
+        renderScreen([
+          {type:'text', text:`My offers for ${account.name}`},
+          {type:'text', text:`- 100MB free trial\n- 10% discount on next recharge`},
+        ]);
+        return;
+    }
+  }
+
+  // handle other existing contexts (bundle/minutes/mobile banking etc.)
+  if (current && current.opts && ['bundle-menu','minutes-menu'].includes(current.opts.context)) {
+    const account = current.opts.account;
+    if (current.opts.context === 'bundle-menu') {
+      const mapping = {
+        '1': {name:'1GB', price:50},
+        '2': {name:'3GB', price:120},
+        '3': {name:'10GB', price:300},
+      };
+      const choice = mapping[key];
+      if (!choice) return;
+      if (account.balance >= choice.price) {
+        account.balance -= choice.price;
+        renderScreen([{type:'receipt', title:'Purchase Successful', body: `${choice.name} purchased for ৳${choice.price}. New balance ৳${account.balance.toFixed(2)}`}]);
+      } else {
+        renderScreen([{type:'text', text:'Insufficient balance.'}]);
+      }
+      return;
+    } else {
+      const mapping = {
+        '1': {name:'50min+100SMS', price:40},
+        '2': {name:'120min+500SMS', price:100},
+      };
+      const choice = mapping[key];
+      if (!choice) return;
+      if (account.balance >= choice.price) {
+        account.balance -= choice.price;
+        renderScreen([{type:'receipt', title:'Purchase Successful', body: `${choice.name} bought for ৳${choice.price}. New balance ৳${account.balance.toFixed(2)}`}]);
+      } else {
+        renderScreen([{type:'text', text:'Insufficient balance.'}]);
+      }
+      return;
+    }
+  }
+
+  // mobile banking menu choices
+  if (current && current.opts && current.opts.context === 'mobile-banking') {
+    switch(String(key)) {
+      case '1': // send money
+        renderScreen([
+          {type:'text', text:'Send Money — choose source account'},
+          {type:'menu', key:'1', text:`1. ${accounts[1].name} (৳${accounts[1].balance.toFixed(2)})`},
+          {type:'menu', key:'2', text:`2. ${accounts[2].name} (৳${accounts[2].balance.toFixed(2)})`},
+          {type:'menu', key:'3', text:`3. ${accounts[3].name} (৳${accounts[3].balance.toFixed(2)})`},
+        ], { context:'send-money-choose', replaceStack:true });
+        return;
+      case '2': // cash out
+        renderScreen([{type:'text', text:'Cash Out — select account (reduce wallet)'}], { context:'cash-out' });
+        return;
+      case '3': // cash in
+        renderScreen([{type:'text', text:'Cash In — select account (increase wallet)'}], { context:'cash-in' });
+        return;
+      case '4':
+        renderScreen([{type:'text', text:'Bank Transfer — feature demo only'}]);
+        return;
+    }
+  }
+
+  // send-money-choose: next choose from-account
+  if (current && current.opts && current.opts.context === 'send-money-choose') {
+    const from = accounts[key];
+    if (!from) return;
+    inputBuffer = "";
+    renderScreen([
+      {type:'text', text:`From: ${from.name} (৳${from.balance.toFixed(2)})`},
+      {type:'input', prompt:'Enter recipient number (e.g. 01810000004)'}
+    ], { context:'send-money-enter-number', from });
+    refreshInputLine();
+    return;
+  }
+
+  // choose account for generic banking actions
+  if (current && current.opts && current.opts.context === 'choose-account-banking') {
+    const acc = accounts[key];
+    if (!acc) {
+      renderScreen([{type:'text', text:'Invalid account.'}]);
+      return;
+    }
+    const parent = current.opts.action;
+    if (parent === 'cash-out') {
+      inputBuffer = "";
+      renderScreen([{type:'text', text:`Cash out from ${acc.name}`}, {type:'input', prompt:'Enter cash out amount (৳)'}], { context:'cash-out-enter', account: acc });
+      refreshInputLine();
+    } else if (parent === 'cash-in') {
+      inputBuffer = "";
+      renderScreen([{type:'text', text:`Cash in to ${acc.name}`}, {type:'input', prompt:'Enter cash in amount (৳)'}], { context:'cash-in-enter', account: acc });
+      refreshInputLine();
+    }
+    return;
+  }
+
+  // generic fallback
+}
+
+// open account menu after choosing account id from *123#
+function openAccountMenu(account) {
+  renderScreen([
+    {type:'text', text:`Account: <span class="font-semibold">${account.name}</span>`},
+    {type:'text', text:`ID: ${account.id} • Number: ${account.number}`},
+    {type:'menu', key:'1', text:'Account balance'},
+    {type:'menu', key:'2', text:'Recharge'},
+    {type:'menu', key:'3', text:'Internet & Combo'},
+    {type:'menu', key:'4', text:'Minutes & SMS'},
+    {type:'menu', key:'5', text:'My offers'},
+  ], { context:'account-menu', account });
+}
+
+// parse a full USSD code when user presses OK/Send
+function processUSSD(command) {
+  // trim and normalize
+  const cmd = String(command || '').trim();
+  if (!cmd) {
+    showIdle();
+    return;
+  }
+  if (cmd === '*123#') {
+    renderScreen([
+      {type:'text', text:'Accounts:'},
+      {type:'text', text:`1: ${accounts[1].name}  — ৳${accounts[1].balance.toFixed(2)}`},
+      {type:'text', text:`2: ${accounts[2].name}  — ৳${accounts[2].balance.toFixed(2)}`},
+      {type:'text', text:`3: ${accounts[3].name}  — ৳${accounts[3].balance.toFixed(2)}`},
+      {type:'input', prompt:'Enter account id to manage (1-3)'}
+    ], { context:'choose-account-for-123' });
+    inputBuffer = "";
+    refreshInputLine();
+    return;
+  }
+
+  if (cmd === '*247#') {
+    renderScreen([
+      {type:'text', text:'Mobile Banking'},
+      {type:'menu', key:'1', text:'Send money'},
+      {type:'menu', key:'2', text:'Cash out'},
+      {type:'menu', key:'3', text:'Cash in'},
+      {type:'menu', key:'4', text:'Bank transfer'},
+    ], { context:'mobile-banking' });
+    return;
+  }
+
+  // new: *999# credential management
+  if (cmd === '*999#') {
+    renderScreen([
+      {type:'text', text:'Credential Manager'},
+      {type:'menu', key:'1', text:'Open account'},
+      {type:'menu', key:'2', text:'Show credentials'},
+      {type:'menu', key:'3', text:'Add credential'},
+      {type:'menu', key:'4', text:'Remove credential'},
+    ], { context:'ussd-999-main' });
+    return;
+  }
+
+  // unknown
+  renderScreen([
+    {type:'text', text:'Unrecognized code.'},
+    {type:'input', prompt:'Try *123#, *247# or *999#'}
+  ], { replaceStack:true });
+  inputBuffer = "";
+  refreshInputLine();
+}
+
+// handle numeric key presses (numpad)
+document.querySelectorAll('.numpad button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const k = btn.dataset.key;
+    onKeyPress(k);
+  });
+});
+
+// left, right, ok, back handlers
+document.getElementById('leftBtn').addEventListener('click', () => {
+  // treat left button as "Send" (call) => process current buffer as USSD
+  processUSSD(inputBuffer);
+});
+// leftBackBtn was removed from markup
+document.getElementById('okBtn').addEventListener('click', () => {
+  // main OK: if the current view has an input prompt, treat OK as submit
+  const current = viewStack[viewStack.length - 1];
+  if (!current) return;
+  const ctx = current.opts && current.opts.context;
+
+  // handle contexts where we expect typed numbers:
+  if (['choose-account-for-123'].includes(ctx)) {
+    const accId = inputBuffer.trim();
+    if (accounts[accId]) {
+      openAccountMenu(accounts[accId]);
+    } else {
+      renderScreen([{type:'text', text:'Invalid account id.'}, {type:'input', prompt:'Enter account id (1-3)'}], { context:'choose-account-for-123', replaceStack:true });
+      inputBuffer = "";
+      refreshInputLine();
+    }
+    return;
+  }
+
+  // new: add credential value submit
+  if (ctx === 'ussd-999-add-creds-enter') {
+    const acc = current.opts.account;
+    const type = current.opts.credType;
+    const val = inputBuffer.trim();
+    if (!val) {
+      renderScreen([{type:'text', text:'Invalid value.'}]);
+      inputBuffer = "";
+      return;
+    }
+    acc.credentials = acc.credentials || [];
+    acc.credentials.push({ type, id: val });
+    renderScreen([{type:'receipt', title:'Credential Added', body: `${type} ${val} added to ${acc.name}`}]);
+    inputBuffer = "";
+    return;
+  }
+
+  if (ctx === 'recharge') {
+    const acc = current.opts.account;
+    const amt = parseFloat(inputBuffer);
+    if (isNaN(amt) || amt <= 0) {
+      renderScreen([{type:'text', text:'Invalid amount.'}]);
+    } else {
+      acc.balance += amt;
+      renderScreen([{type:'receipt', title:'Recharge Successful', body:`Recharge of ৳${amt.toFixed(2)} added to ${acc.name}. New balance ৳${acc.balance.toFixed(2)}`}]);
+    }
+    inputBuffer = "";
+    return;
+  }
+
+  if (ctx === 'send-money-enter-number') {
+    const from = current.opts.from;
+    const number = inputBuffer.trim();
+    if (!number) {
+      renderScreen([{type:'text', text:'Enter valid recipient number.'}]);
+      return;
+    }
+    inputBuffer = "";
+    renderScreen([
+      {type:'text', text:`To: ${number} from ${from.name}`},
+      {type:'input', prompt:'Enter amount to send (৳)'}
+    ], { context:'send-money-enter-amount', from, toNumber: number });
+    refreshInputLine();
+    return;
+  }
+
+  if (ctx === 'send-money-enter-amount') {
+    const from = current.opts.from;
+    const toNumber = current.opts.toNumber;
+    const amt = parseFloat(inputBuffer);
+    if (isNaN(amt) || amt <= 0) {
+      renderScreen([{type:'text', text:'Invalid amount.'}]);
+      inputBuffer = "";
+      return;
+    }
+    if (from.balance < amt) {
+      renderScreen([{type:'text', text:'Insufficient funds.'}]);
+    } else {
+      from.balance -= amt;
+      const recipientAccount = Object.values(accounts).find(a => a.number === toNumber);
+      if (recipientAccount) recipientAccount.balance += amt;
+      renderScreen([{type:'receipt', title:'Transfer Complete', body:`Sent ৳${amt.toFixed(2)} from ${from.name} to ${toNumber}. New balance ৳${from.balance.toFixed(2)}`}]);
+    }
+    inputBuffer = "";
+    return;
+  }
+
+  if (ctx === 'cash-out-enter') {
+    const acc = current.opts.account;
+    const amt = parseFloat(inputBuffer);
+    if (isNaN(amt) || amt <= 0) {
+      renderScreen([{type:'text', text:'Invalid amount.'}]);
+    } else if (acc.wallet < amt) {
+      renderScreen([{type:'text', text:'Insufficient wallet cash.'}]);
+    } else {
+      acc.wallet -= amt;
+      renderScreen([{type:'receipt', title:'Cash Out', body:`You cashed out ৳${amt.toFixed(2)}. Wallet now ৳${acc.wallet.toFixed(2)}`}]);
+    }
+    inputBuffer = "";
+    return;
+  }
+
+  if (ctx === 'cash-in-enter') {
+    const acc = current.opts.account;
+    const amt = parseFloat(inputBuffer);
+    if (isNaN(amt) || amt <= 0) {
+      renderScreen([{type:'text', text:'Invalid amount.'}]);
+    } else {
+      acc.wallet += amt;
+      renderScreen([{type:'receipt', title:'Cash In', body:`You added ৳${amt.toFixed(2)} to wallet. Wallet now ৳${acc.wallet.toFixed(2)}`}]);
+    }
+    inputBuffer = "";
+    return;
+  }
+
+  // fallback: if current view shows menu items, the OK acts as selecting the buffer (if it's a number)
+  if (inputBuffer) {
+    handleMenuSelect(inputBuffer.trim());
+    inputBuffer = "";
+    refreshInputLine();
+    return;
+  }
+});
+
+// right/back button
+document.getElementById('rightBtn').addEventListener('click', () => {
+  // behave as Back: pop stack and re-render previous or idle
+  viewStack.pop(); // remove current
+  if (viewStack.length === 0) {
+    showIdle();
+  } else {
+    const top = viewStack[viewStack.length - 1];
+    // re-render top view without pushing to stack
+    renderScreen(top.lines, Object.assign({}, top.opts, { replaceStack:true }));
+  }
+});
+
+// also map middle navigation arrows to small actions (optional)
+document.getElementById('upBtn').addEventListener('click', ()=>{});
+document.getElementById('downBtn').addEventListener('click', ()=>{});
+document.getElementById('leftNav').addEventListener('click', ()=>{});
+document.getElementById('rightNav').addEventListener('click', ()=>{});
+
+// helper for num key press
+function onKeyPress(key) {
+  // visible typed buffer updates when top view includes an input
+  const current = viewStack[viewStack.length - 1] || {};
+  const ctx = current.opts && current.opts.context;
+
+  // include new contexts that expect typed input
+  const typedContexts = [
+    'choose-account-for-123','recharge','send-money-enter-number','send-money-enter-amount',
+    'cash-out-enter','cash-in-enter','ussd-999-add-creds-enter'
+  ];
+
+  if (typedContexts.includes(ctx)) {
+    if (key === '*' || key === '#' || /[0-9A-Za-z\-]/.test(key)) {
+      inputBuffer += key;
+      refreshInputLine();
+    }
+    return;
+  }
+
+  // if idle-like input (the initial screen)
+  if (!ctx || ctx === undefined) {
+    if (key === '*' || key === '#' || /[0-9]/.test(key)) {
+      inputBuffer += key;
+      refreshInputLine();
+    }
+    return;
+  }
+
+  // If current view contains menu and user presses number, treat as selection directly
+  if (current && current.lines) {
+    const menuKeys = current.lines.filter(l => l.type === 'menu').map(l => String(l.key));
+    if (menuKeys.includes(String(key))) {
+      handleMenuSelect(String(key));
+      return;
+    }
+  }
+
+  if (/[0-9*#]/.test(key)) {
+    inputBuffer += key;
+    refreshInputLine();
+  }
+}
+
+// allow physical keyboard for convenience
+document.addEventListener('keydown', (e) => {
+  const k = e.key;
+  if (/^[0-9*#]$/.test(k)) {
+    onKeyPress(k);
+    e.preventDefault();
+  } else if (k === 'Enter') {
+    document.getElementById('okBtn').click();
+  } else if (k === 'Escape' || k === 'Backspace') {
+    document.getElementById('rightBtn').click();
+  }
+});
+
+// small helper: when a menu item was clicked by pointer, handleMenuSelect will be called;
+// for some contexts where we need to choose account from list under banking, we provide function:
+function openChooseAccountForBanking(actionName) {
+  renderScreen([
+    {type:'text', text:'Choose account:'},
+    {type:'menu', key:'1', text:`1. ${accounts[1].name} (৳${accounts[1].balance.toFixed(2)})`},
+    {type:'menu', key:'2', text:`2. ${accounts[2].name} (৳${accounts[2].balance.toFixed(2)})`},
+    {type:'menu', key:'3', text:`3. ${accounts[3].name} (৳${accounts[3].balance.toFixed(2)})`},
+  ], { context:'choose-account-banking', action: actionName });
+}
+
+// initialize with idle
+showIdle();
+
+</script>
+</body>
+</html>
